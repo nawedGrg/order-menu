@@ -25,7 +25,7 @@ const Index = () => {
         <div className="container mx-auto flex items-center justify-between h-16 px-4">
           <Link to="/" className="flex items-center gap-2">
             <UtensilsCrossed className="w-6 h-6 text-primary" />
-            <span className="font-display font-bold text-xl">Tastebud</span>
+            <span className="font-display font-bold text-xl">NA_WED MENU</span>
           </Link>
           <div className="flex items-center gap-2">
             <Link to="/admin">
