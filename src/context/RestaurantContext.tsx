@@ -1,11 +1,13 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
-import { MenuItem, CartItem, Order, initialMenuItems } from "@/data/menuData";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { MenuItem, CartItem, Order, Category } from "@/data/menuData";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RestaurantContextType {
   menuItems: MenuItem[];
   cart: CartItem[];
   orders: Order[];
+  loading: boolean;
   addToCart: (item: MenuItem) => void;
   removeFromCart: (itemId: string) => void;
   updateCartQuantity: (itemId: string, quantity: number) => void;
@@ -28,10 +30,98 @@ export const useRestaurant = () => {
 };
 
 export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>(initialMenuItems);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+
+  // Fetch menu items
+  useEffect(() => {
+    const fetchMenu = async () => {
+      const { data, error } = await supabase
+        .from("menu_items")
+        .select("*")
+        .order("created_at", { ascending: true });
+      if (error) {
+        console.error("Error fetching menu:", error);
+      } else {
+        setMenuItems(
+          (data || []).map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            price: Number(row.price),
+            category: row.category as Category,
+            image: row.image,
+            description: row.description,
+            available: row.available,
+          }))
+        );
+      }
+      setLoading(false);
+    };
+    fetchMenu();
+  }, []);
+
+  // Fetch orders
+  useEffect(() => {
+    const fetchOrders = async () => {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (ordersError) {
+        console.error("Error fetching orders:", ordersError);
+        return;
+      }
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("order_items")
+        .select("*");
+      if (itemsError) {
+        console.error("Error fetching order items:", itemsError);
+        return;
+      }
+
+      const mapped: Order[] = (ordersData || []).map((o: any) => {
+        const oItems = (itemsData || [])
+          .filter((i: any) => i.order_id === o.id)
+          .map((i: any) => ({
+            menuItem: {
+              id: i.menu_item_id,
+              name: i.menu_item_name,
+              price: Number(i.menu_item_price),
+              category: "Food" as Category,
+              image: "",
+              description: "",
+              available: true,
+            },
+            quantity: i.quantity,
+          }));
+        return {
+          id: o.id,
+          customerName: o.customer_name,
+          tableNumber: o.table_number,
+          notes: o.notes,
+          items: oItems,
+          total: Number(o.total),
+          status: o.status as Order["status"],
+          createdAt: new Date(o.created_at),
+        };
+      });
+      setOrders(mapped);
+    };
+    fetchOrders();
+
+    // Realtime subscription for orders
+    const channel = supabase
+      .channel("orders-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
+        fetchOrders();
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, []);
 
   const addToCart = useCallback((item: MenuItem) => {
     setCart((prev) => {
@@ -66,35 +156,70 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const cartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   const placeOrder = useCallback(
-    (customerName: string, tableNumber: string, notes: string) => {
-      const order: Order = {
-        id: Date.now().toString(),
-        customerName,
-        tableNumber,
-        notes,
-        items: [...cart],
-        total: cartTotal,
-        status: "pending",
-        createdAt: new Date(),
-      };
-      setOrders((prev) => [order, ...prev]);
+    async (customerName: string, tableNumber: string, notes: string) => {
+      const { data: orderData, error: orderError } = await supabase
+        .from("orders")
+        .insert({ customer_name: customerName, table_number: tableNumber, notes, total: cartTotal, status: "pending" })
+        .select()
+        .single();
+
+      if (orderError || !orderData) {
+        toast({ title: "Error placing order", variant: "destructive" });
+        return;
+      }
+
+      const orderItems = cart.map((c) => ({
+        order_id: orderData.id,
+        menu_item_id: c.menuItem.id,
+        menu_item_name: c.menuItem.name,
+        menu_item_price: c.menuItem.price,
+        quantity: c.quantity,
+      }));
+
+      const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+      if (itemsError) {
+        console.error("Error inserting order items:", itemsError);
+      }
+
       setCart([]);
-      toast({ title: "Order placed! 🎉", description: `Order #${order.id.slice(-4)} confirmed` });
+      toast({ title: "Order placed! 🎉", description: `Order confirmed` });
     },
     [cart, cartTotal, toast]
   );
 
   const addMenuItem = useCallback(
-    (item: Omit<MenuItem, "id">) => {
-      const newItem: MenuItem = { ...item, id: Date.now().toString() };
-      setMenuItems((prev) => [...prev, newItem]);
+    async (item: Omit<MenuItem, "id">) => {
+      const { data, error } = await supabase
+        .from("menu_items")
+        .insert({ name: item.name, price: item.price, category: item.category, image: item.image, description: item.description, available: item.available })
+        .select()
+        .single();
+
+      if (error) {
+        toast({ title: "Error adding item", variant: "destructive" });
+        return;
+      }
+      setMenuItems((prev) => [...prev, { ...item, id: data.id }]);
       toast({ title: "Menu item added", description: item.name });
     },
     [toast]
   );
 
   const updateMenuItem = useCallback(
-    (id: string, updates: Partial<MenuItem>) => {
+    async (id: string, updates: Partial<MenuItem>) => {
+      const dbUpdates: any = {};
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.price !== undefined) dbUpdates.price = updates.price;
+      if (updates.category !== undefined) dbUpdates.category = updates.category;
+      if (updates.image !== undefined) dbUpdates.image = updates.image;
+      if (updates.description !== undefined) dbUpdates.description = updates.description;
+      if (updates.available !== undefined) dbUpdates.available = updates.available;
+
+      const { error } = await supabase.from("menu_items").update(dbUpdates).eq("id", id);
+      if (error) {
+        toast({ title: "Error updating item", variant: "destructive" });
+        return;
+      }
       setMenuItems((prev) => prev.map((m) => (m.id === id ? { ...m, ...updates } : m)));
       toast({ title: "Menu item updated" });
     },
@@ -102,7 +227,12 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 
   const deleteMenuItem = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      const { error } = await supabase.from("menu_items").delete().eq("id", id);
+      if (error) {
+        toast({ title: "Error deleting item", variant: "destructive" });
+        return;
+      }
       setMenuItems((prev) => prev.filter((m) => m.id !== id));
       toast({ title: "Menu item deleted", variant: "destructive" });
     },
@@ -110,7 +240,12 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   );
 
   const updateOrderStatus = useCallback(
-    (orderId: string, status: Order["status"]) => {
+    async (orderId: string, status: Order["status"]) => {
+      const { error } = await supabase.from("orders").update({ status }).eq("id", orderId);
+      if (error) {
+        toast({ title: "Error updating status", variant: "destructive" });
+        return;
+      }
       setOrders((prev) =>
         prev.map((o) => (o.id === orderId ? { ...o, status } : o))
       );
@@ -122,7 +257,7 @@ export const RestaurantProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   return (
     <RestaurantContext.Provider
       value={{
-        menuItems, cart, orders,
+        menuItems, cart, orders, loading,
         addToCart, removeFromCart, updateCartQuantity, clearCart,
         cartTotal, cartCount, placeOrder,
         addMenuItem, updateMenuItem, deleteMenuItem, updateOrderStatus,
