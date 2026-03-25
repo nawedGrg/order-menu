@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRestaurant } from "@/context/RestaurantContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Pencil, Trash2, UtensilsCrossed } from "lucide-react";
+import { Plus, Pencil, Trash2, UtensilsCrossed, Upload, X, Image as ImageIcon } from "lucide-react";
 import { MenuItem, Category, categories } from "@/data/menuData";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const emptyForm = { name: "", price: "", category: "Food" as Category, image: "", description: "", available: true };
 
@@ -19,12 +21,67 @@ const AdminMenuManagement = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [uploading, setUploading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
-  const openAdd = () => { setEditingItem(null); setForm(emptyForm); setDialogOpen(true); };
+  const openAdd = () => {
+    setEditingItem(null);
+    setForm(emptyForm);
+    setPreviewUrl(null);
+    setDialogOpen(true);
+  };
+
   const openEdit = (item: MenuItem) => {
     setEditingItem(item);
     setForm({ name: item.name, price: item.price.toString(), category: item.category, image: item.image, description: item.description, available: item.available });
+    setPreviewUrl(item.image || null);
     setDialogOpen(true);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Please select an image file", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "Image must be under 5MB", variant: "destructive" });
+      return;
+    }
+
+    setUploading(true);
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${crypto.randomUUID()}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from("menu-images")
+      .upload(fileName, file, { cacheControl: "3600", upsert: false });
+
+    if (error) {
+      toast({ title: "Upload failed", description: error.message, variant: "destructive" });
+      setUploading(false);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("menu-images")
+      .getPublicUrl(fileName);
+
+    setForm((prev) => ({ ...prev, image: urlData.publicUrl }));
+    setPreviewUrl(urlData.publicUrl);
+    setUploading(false);
+    toast({ title: "Image uploaded!" });
+  };
+
+  const clearImage = () => {
+    setForm((prev) => ({ ...prev, image: "" }));
+    setPreviewUrl(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -60,13 +117,52 @@ const AdminMenuManagement = () => {
                   <SelectContent>{categories.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label className="font-body text-sm">Image URL</Label><Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} placeholder="https://..." /></div>
+
+              {/* Image Upload Section */}
+              <div className="space-y-2">
+                <Label className="font-body text-sm">Image</Label>
+                {previewUrl ? (
+                  <div className="relative group rounded-lg overflow-hidden border border-border">
+                    <img src={previewUrl} alt="Preview" className="w-full h-40 object-cover" />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      className="absolute top-2 right-2 p-1 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex flex-col items-center justify-center gap-2 h-32 rounded-lg border-2 border-dashed border-border bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
+                  >
+                    {uploading ? (
+                      <p className="text-sm text-muted-foreground font-body animate-pulse">Uploading…</p>
+                    ) : (
+                      <>
+                        <Upload className="w-8 h-8 text-muted-foreground" />
+                        <p className="text-sm text-muted-foreground font-body">Click to upload image</p>
+                        <p className="text-xs text-muted-foreground/70 font-body">Max 5MB · JPG, PNG, WebP</p>
+                      </>
+                    )}
+                  </div>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                />
+              </div>
+
               <div><Label className="font-body text-sm">Description</Label><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
               <div className="flex items-center gap-2">
                 <Switch checked={form.available} onCheckedChange={(v) => setForm({ ...form, available: v })} />
                 <Label className="font-body text-sm">Available</Label>
               </div>
-              <Button type="submit" className="w-full">{editingItem ? "Save Changes" : "Add Item"}</Button>
+              <Button type="submit" className="w-full" disabled={uploading}>{editingItem ? "Save Changes" : "Add Item"}</Button>
             </form>
           </DialogContent>
         </Dialog>
@@ -83,7 +179,13 @@ const AdminMenuManagement = () => {
             {menuItems.map((item) => (
               <motion.div key={item.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                 <Card className="p-4 flex items-center gap-4">
-                  <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover" />
+                  {item.image ? (
+                    <img src={item.image} alt={item.name} className="w-14 h-14 rounded-lg object-cover" />
+                  ) : (
+                    <div className="w-14 h-14 rounded-lg bg-muted flex items-center justify-center">
+                      <ImageIcon className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <h4 className="font-body font-semibold truncate">{item.name}</h4>
