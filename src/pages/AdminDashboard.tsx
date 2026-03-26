@@ -73,13 +73,7 @@ const AdminDashboard = () => {
             <MenuIcon className="w-5 h-5" />
           </Button>
           <h1 className="font-display text-lg font-semibold capitalize">{activeTab}</h1>
-          <div className="ml-auto flex items-center gap-1">
-            <Link to="/">
-              <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
-                <ArrowLeft className="w-4 h-4" />
-                <span className="hidden sm:inline">Back to Menu</span>
-              </Button>
-            </Link>
+          <div className="ml-auto">
             <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={signOut}>
               <LogOut className="w-4 h-4" />
               <span className="hidden sm:inline">Sign Out</span>
