@@ -19,6 +19,7 @@ const navItems: { key: AdminTab; label: string; icon: React.ElementType }[] = [
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>("dashboard");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { signOut } = useAuth();
 
   return (
     <div className="min-h-screen flex bg-background">
