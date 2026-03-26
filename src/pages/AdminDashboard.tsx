@@ -79,6 +79,7 @@ const AdminDashboard = () => {
               <span className="hidden sm:inline">Sign Out</span>
             </Button>
           </div>
+        </header>
         <main className="flex-1 p-4 md:p-8">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             {activeTab === "dashboard" && <AdminOverview />}
