@@ -73,7 +73,12 @@ const AdminDashboard = () => {
             <MenuIcon className="w-5 h-5" />
           </Button>
           <h1 className="font-display text-lg font-semibold capitalize">{activeTab}</h1>
-        </header>
+          <div className="ml-auto">
+            <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground" onClick={signOut}>
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </Button>
+          </div>
         <main className="flex-1 p-4 md:p-8">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
             {activeTab === "dashboard" && <AdminOverview />}
