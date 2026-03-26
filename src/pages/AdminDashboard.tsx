@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { LayoutDashboard, UtensilsCrossed, ClipboardList, ArrowLeft, Menu as MenuIcon, X } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, ClipboardList, ArrowLeft, Menu as MenuIcon, X, LogOut } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import AdminMenuManagement from "@/components/admin/AdminMenuManagement";
