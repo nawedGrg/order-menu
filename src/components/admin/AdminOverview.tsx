@@ -44,7 +44,7 @@ const AdminOverview = () => {
               <div key={order.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                 <div>
                   <p className="font-body font-semibold text-sm">{order.customerName} — Table {order.tableNumber}</p>
-                  <p className="text-muted-foreground text-xs font-body">{order.items.length} item(s)</p>
+                  <p className="text-muted-foreground text-xs font-body">{order.items.length} item(s) · {new Date(order.createdAt).toLocaleDateString()} {new Date(order.createdAt).toLocaleTimeString()}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-body font-bold text-primary">${order.total.toFixed(2)}</p>
