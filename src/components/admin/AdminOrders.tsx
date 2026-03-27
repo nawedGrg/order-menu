@@ -34,7 +34,7 @@ const AdminOrders = () => {
                   #{order.id.slice(-4)} — {order.customerName}
                 </h3>
                 <p className="text-sm text-muted-foreground font-body">
-                  Table {order.tableNumber} · {new Date(order.createdAt).toLocaleTimeString()}
+                  Table {order.tableNumber} · {new Date(order.createdAt).toLocaleDateString()} {new Date(order.createdAt).toLocaleTimeString()}
                 </p>
                 {order.notes && <p className="text-sm text-muted-foreground font-body italic mt-1">"{order.notes}"</p>}
               </div>
